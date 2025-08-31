@@ -1,3 +1,4 @@
+
 const { NODE_ENV } = process.env;
 
 export const inTest = NODE_ENV === 'test';
