@@ -27,7 +27,6 @@ export class MfaService {
 		try {
 			await this.loadMFASettings();
 		} catch (error) {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 			this.logger.warn('Failed to load MFA settings', { error });
 		}
 	}
@@ -123,7 +122,10 @@ export class MfaService {
 	}
 
 	async enableMfa(userId: string) {
-		const user = await this.userRepository.findOneByOrFail({ id: userId });
+		const user = await this.userRepository.findOneOrFail({
+			where: { id: userId },
+			relations: ['role'],
+		});
 		user.mfaEnabled = true;
 		return await this.userRepository.save(user);
 	}

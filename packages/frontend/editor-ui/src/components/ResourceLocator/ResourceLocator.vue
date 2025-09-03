@@ -55,6 +55,7 @@ import {
 } from '../../utils/fromAIOverrideUtils';
 import { N8nNotice } from '@n8n/design-system';
 import { completeExpressionSyntax } from '@/utils/expressions';
+import { useProjectsStore } from '@/stores/projects.store';
 
 /**
  * Regular expression to check if the error message contains credential-related phrases.
@@ -144,6 +145,7 @@ const ndvStore = useNDVStore();
 const rootStore = useRootStore();
 const uiStore = useUIStore();
 const workflowsStore = useWorkflowsStore();
+const projectsStore = useProjectsStore();
 
 const appName = computed(() => {
 	if (!props.node) {
@@ -186,8 +188,9 @@ const hasCredentialError = computed(() => {
 	);
 });
 
-const credentialsNotSet = computed(() => {
+const credentialsRequiredAndNotSet = computed(() => {
 	if (!props.node) return false;
+	if (skipCredentialsCheckInRLC.value) return false;
 	const nodeType = nodeTypesStore.getNodeType(props.node.type);
 	if (nodeType) {
 		const usesCredentials = nodeType.credentials !== undefined && nodeType.credentials.length > 0;
@@ -269,6 +272,7 @@ const currentRequestParams = computed(() => {
 		parameters: props.node?.parameters ?? {},
 		credentials: props.node?.credentials ?? {},
 		filter: searchFilter.value,
+		projectId: projectsStore.currentProjectId,
 	};
 });
 
@@ -314,6 +318,10 @@ const currentQueryError = computed(() => {
 });
 
 const isSearchable = computed(() => !!getPropertyArgument(currentMode.value, 'searchable'));
+
+const skipCredentialsCheckInRLC = computed(
+	() => !!getPropertyArgument(currentMode.value, 'skipCredentialsCheckInRLC'),
+);
 
 const requiresSearchFilter = computed(
 	() => !!getPropertyArgument(currentMode.value, 'searchFilterRequired'),
@@ -603,7 +611,8 @@ function onModeSelected(value: string): void {
 	} else if (value === 'id' && selectedMode.value === 'list' && props.modelValue?.value) {
 		emit('update:modelValue', { __rl: true, mode: value, value: props.modelValue.value });
 	} else {
-		emit('update:modelValue', { __rl: true, mode: value, value: '' });
+		const currentValue = props.modelValue?.value ?? '';
+		emit('update:modelValue', { __rl: true, mode: value, value: currentValue });
 	}
 
 	trackEvent('User changed resource locator mode', { mode: value });
@@ -666,7 +675,7 @@ async function loadResources() {
 	const paramsKey = currentRequestKey.value;
 	const cachedResponse = cachedResponses.value[paramsKey];
 
-	if (credentialsNotSet.value) {
+	if (credentialsRequiredAndNotSet.value) {
 		setResponse(paramsKey, { error: true });
 		return;
 	}
@@ -716,6 +725,7 @@ async function loadResources() {
 			methodName: loadOptionsMethod,
 			currentNodeParameters: resolvedNodeParameters,
 			credentials: props.node.credentials,
+			projectId: projectsStore.currentProjectId,
 		};
 
 		if (params.filter) {
@@ -922,7 +932,7 @@ function removeOverride() {
 			<template #error>
 				<div :class="$style.errorContainer" data-test-id="rlc-error-container">
 					<n8n-text
-						v-if="credentialsNotSet || currentResponse.errorDetails"
+						v-if="credentialsRequiredAndNotSet || currentResponse.errorDetails"
 						color="text-dark"
 						align="center"
 						tag="div"
@@ -946,9 +956,12 @@ function removeOverride() {
 							{{ currentResponse.errorDetails.description }}
 						</N8nNotice>
 					</div>
-					<div v-if="hasCredentialError || credentialsNotSet" data-test-id="permission-error-link">
+					<div
+						v-if="hasCredentialError || credentialsRequiredAndNotSet"
+						data-test-id="permission-error-link"
+					>
 						<a
-							v-if="credentialsNotSet"
+							v-if="credentialsRequiredAndNotSet"
 							:class="$style['credential-link']"
 							@click="createNewCredential"
 						>
@@ -1104,5 +1117,5 @@ function removeOverride() {
 </template>
 
 <style lang="scss" module>
-@import './resourceLocator.scss';
+@use './resourceLocator.scss';
 </style>

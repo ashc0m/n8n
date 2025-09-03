@@ -1,10 +1,13 @@
-import { randomEmail, randomName, randomValidPassword } from '@n8n/backend-test-utils';
-import { testDb } from '@n8n/backend-test-utils';
-import { mockInstance } from '@n8n/backend-test-utils';
+import {
+	randomEmail,
+	randomName,
+	randomValidPassword,
+	testDb,
+	mockInstance,
+} from '@n8n/backend-test-utils';
 import { GlobalConfig } from '@n8n/config';
 import type { User } from '@n8n/db';
-import { ProjectRepository } from '@n8n/db';
-import { UserRepository } from '@n8n/db';
+import { GLOBAL_OWNER_ROLE, ProjectRepository, UserRepository } from '@n8n/db';
 import { Container } from '@n8n/di';
 import type { IPersonalizationSurveyAnswersV4 } from 'n8n-workflow';
 import validator from 'validator';
@@ -18,7 +21,10 @@ const testServer = utils.setupTestServer({ endpointGroups: ['me'] });
 
 beforeEach(async () => {
 	await testDb.truncate(['User']);
-	mockInstance(GlobalConfig, { publicApi: { disabled: false } });
+	mockInstance(GlobalConfig, {
+		publicApi: { disabled: false },
+		sso: { saml: { loginEnabled: true } },
+	});
 });
 
 describe('Owner shell', () => {
@@ -26,7 +32,7 @@ describe('Owner shell', () => {
 	let authOwnerShellAgent: SuperAgentTest;
 
 	beforeEach(async () => {
-		ownerShell = await createUserShell('global:owner');
+		ownerShell = await createUserShell(GLOBAL_OWNER_ROLE);
 		authOwnerShellAgent = testServer.authAgentFor(ownerShell);
 	});
 
@@ -133,7 +139,7 @@ describe('Member', () => {
 	beforeEach(async () => {
 		member = await createUser({
 			password: memberPassword,
-			role: 'global:member',
+			role: { slug: 'global:member' },
 		});
 		authMemberAgent = testServer.authAgentFor(member);
 		await utils.setInstanceOwnerSetUp(true);
@@ -237,7 +243,7 @@ describe('Member', () => {
 
 describe('Owner', () => {
 	test('PATCH /me should succeed with valid inputs', async () => {
-		const owner = await createUser({ role: 'global:owner' });
+		const owner = await createUser({ role: GLOBAL_OWNER_ROLE });
 		const authOwnerAgent = testServer.authAgentFor(owner);
 
 		for (const validPayload of VALID_PATCH_ME_PAYLOADS) {

@@ -28,6 +28,7 @@ import { usePageRedirectionHelper } from '@/composables/usePageRedirectionHelper
 import { useI18n } from '@n8n/i18n';
 import { telemetry } from '@/plugins/telemetry';
 import { useWorkflowSaving } from '@/composables/useWorkflowSaving';
+import { I18nT } from 'vue-i18n';
 
 const props = defineProps<{
 	data: {
@@ -107,12 +108,20 @@ const workflowRoleTranslations = computed(() => ({
 }));
 
 const workflowRoles = computed(() =>
-	rolesStore.processedWorkflowRoles.map(({ role, scopes, licensed }) => ({
-		role,
-		name: workflowRoleTranslations.value[role],
-		scopes,
-		licensed,
-	})),
+	rolesStore.processedWorkflowRoles.map(
+		({ slug, scopes, displayName, licensed, description, systemRole, roleType }) => ({
+			slug,
+			displayName:
+				slug in workflowRoleTranslations.value
+					? workflowRoleTranslations.value[slug as keyof typeof workflowRoleTranslations.value]
+					: displayName,
+			scopes,
+			licensed,
+			description,
+			systemRole,
+			roleType,
+		}),
+	),
 );
 
 const trackTelemetry = (eventName: string, data: ITelemetryTrackProperties) => {
@@ -274,7 +283,7 @@ watch(
 							@project-removed="onProjectRemoved"
 						/>
 						<n8n-info-tip v-if="isHomeTeamProject" :bold="false" class="mt-s">
-							<i18n-t keypath="workflows.shareModal.info.members" tag="span">
+							<I18nT keypath="workflows.shareModal.info.members" tag="span" scope="global">
 								<template #projectName>
 									{{ workflow.homeProject?.name }}
 								</template>
@@ -290,20 +299,21 @@ watch(
 										}}
 									</strong>
 								</template>
-							</i18n-t>
+							</I18nT>
 						</n8n-info-tip>
 					</div>
 					<template #fallback>
 						<n8n-text>
-							<i18n-t
+							<I18nT
 								:keypath="
 									uiStore.contextBasedTranslationKeys.workflows.sharing.unavailable.description
 										.tooltip
 								"
 								tag="span"
+								scope="global"
 							>
 								<template #action />
-							</i18n-t>
+							</I18nT>
 						</n8n-text>
 					</template>
 				</enterprise-edition>

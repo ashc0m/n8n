@@ -390,7 +390,7 @@ describe('NDV', () => {
 	});
 
 	it('should not push NDV header out with a lot of code in Code node editor', () => {
-		workflowPage.actions.addInitialNodeToCanvas('Code', { keepNdvOpen: true });
+		workflowPage.actions.addInitialCodeNodeToCanvas({ keepNdvOpen: true });
 		ndv.getters.parameterInput('jsCode').get('.cm-content').type('{selectall}').type('{backspace}');
 		cy.fixture('Dummy_javascript.txt').then((code) => {
 			ndv.getters.parameterInput('jsCode').get('.cm-content').paste(code);
@@ -400,7 +400,7 @@ describe('NDV', () => {
 
 	it('should allow editing code in fullscreen in the code editors', () => {
 		// Code (JavaScript)
-		workflowPage.actions.addInitialNodeToCanvas('Code', { keepNdvOpen: true });
+		workflowPage.actions.addInitialCodeNodeToCanvas({ keepNdvOpen: true });
 		ndv.actions.openCodeEditorFullscreen();
 
 		ndv.getters.codeEditorFullscreen().type('{selectall}').type('{backspace}').type('foo()');
@@ -712,7 +712,7 @@ describe('NDV', () => {
 			.outputDataContainer()
 			.should(
 				'have.text',
-				'[{"body": "<?xml version="1.0" encoding="UTF-8"?> <library>     <book>         <title>Introduction to XML</title>         <author>John Doe</author>         <publication_year>2020</publication_year>         <isbn>1234567890</isbn>     </book>     <book>         <title>Data Science Basics</title>         <author>Jane Smith</author>         <publication_year>2019</publication_year>         <isbn>0987654321</isbn>     </book>     <book>         <title>Programming in Python</title>         <author>Bob Johnson</author>         <publication_year>2021</publication_year>         <isbn>5432109876</isbn>     </book> </library>"}]',
+				'[{"body": "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?> <library>     <book>         <title>Introduction to XML</title>         <author>John Doe</author>         <publication_year>2020</publication_year>         <isbn>1234567890</isbn>     </book>     <book>         <title>Data Science Basics</title>         <author>Jane Smith</author>         <publication_year>2019</publication_year>         <isbn>0987654321</isbn>     </book>     <book>         <title>Programming in Python</title>         <author>Bob Johnson</author>         <publication_year>2021</publication_year>         <isbn>5432109876</isbn>     </book> </library>"}]',
 			);
 		ndv.getters.outputDataContainer().find('mark').should('have.text', '<lib');
 
@@ -725,8 +725,7 @@ describe('NDV', () => {
 	});
 
 	it('should properly show node execution indicator', () => {
-		workflowPage.actions.addInitialNodeToCanvas('Code');
-		workflowPage.actions.openNode('Code');
+		workflowPage.actions.addInitialCodeNodeToCanvas();
 		// Should not show run info before execution
 		ndv.getters.nodeRunSuccessIndicator().should('not.exist');
 		ndv.getters.nodeRunErrorIndicator().should('not.exist');
@@ -737,8 +736,7 @@ describe('NDV', () => {
 	});
 
 	it('should properly show node execution indicator for multiple nodes', () => {
-		workflowPage.actions.addInitialNodeToCanvas('Code');
-		workflowPage.actions.openNode('Code');
+		workflowPage.actions.addInitialCodeNodeToCanvas();
 		ndv.actions.typeIntoParameterInput('jsCode', 'testets');
 		ndv.getters.backToCanvas().click();
 		workflowPage.actions.executeWorkflow();

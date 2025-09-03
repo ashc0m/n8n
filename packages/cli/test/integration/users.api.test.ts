@@ -1,15 +1,26 @@
-import { createTeamProject, getPersonalProject, linkUserToProject } from '@n8n/backend-test-utils';
-import { createWorkflow, getWorkflowById, shareWorkflowWithUsers } from '@n8n/backend-test-utils';
-import { randomCredentialPayload } from '@n8n/backend-test-utils';
-import { testDb } from '@n8n/backend-test-utils';
-import { mockInstance } from '@n8n/backend-test-utils';
-import type { User } from '@n8n/db';
-import { FolderRepository } from '@n8n/db';
-import { ProjectRelationRepository } from '@n8n/db';
-import { ProjectRepository } from '@n8n/db';
-import { SharedCredentialsRepository } from '@n8n/db';
-import { SharedWorkflowRepository } from '@n8n/db';
-import { UserRepository } from '@n8n/db';
+import {
+	createTeamProject,
+	getPersonalProject,
+	linkUserToProject,
+	createWorkflow,
+	getWorkflowById,
+	shareWorkflowWithUsers,
+	randomCredentialPayload,
+	testDb,
+	mockInstance,
+} from '@n8n/backend-test-utils';
+import type { PublicUser, User } from '@n8n/db';
+import {
+	FolderRepository,
+	GLOBAL_ADMIN_ROLE,
+	GLOBAL_MEMBER_ROLE,
+	GLOBAL_OWNER_ROLE,
+	ProjectRelationRepository,
+	ProjectRepository,
+	SharedCredentialsRepository,
+	SharedWorkflowRepository,
+	UserRepository,
+} from '@n8n/db';
 import { Container } from '@n8n/di';
 import { v4 as uuid } from 'uuid';
 
@@ -44,6 +55,7 @@ describe('GET /users', () => {
 	let member1: User;
 	let member2: User;
 	let ownerAgent: SuperAgentTest;
+	let memberAgent: SuperAgentTest;
 	let userRepository: UserRepository;
 
 	beforeAll(async () => {
@@ -52,26 +64,26 @@ describe('GET /users', () => {
 		userRepository = Container.get(UserRepository);
 
 		owner = await createUser({
-			role: 'global:owner',
+			role: GLOBAL_OWNER_ROLE,
 			email: 'owner@n8n.io',
 			firstName: 'OwnerFirstName',
 			lastName: 'OwnerLastName',
 		});
 		member1 = await createUser({
-			role: 'global:member',
+			role: GLOBAL_MEMBER_ROLE,
 			email: 'member1@n8n.io',
 			firstName: 'Member1FirstName',
 			lastName: 'Member1LastName',
 			mfaEnabled: true,
 		});
 		member2 = await createUser({
-			role: 'global:member',
+			role: GLOBAL_MEMBER_ROLE,
 			email: 'member2@n8n.io',
 			firstName: 'Member2FirstName',
 			lastName: 'Member2LastName',
 		});
 		await createUser({
-			role: 'global:admin',
+			role: GLOBAL_ADMIN_ROLE,
 			email: 'admin@n8n.io',
 			firstName: 'AdminFirstName',
 			lastName: 'AdminLastName',
@@ -83,6 +95,7 @@ describe('GET /users', () => {
 		}
 
 		ownerAgent = testServer.authAgentFor(owner);
+		memberAgent = testServer.authAgentFor(member1);
 	});
 
 	test('should return all users', async () => {
@@ -562,51 +575,62 @@ describe('GET /users', () => {
 		});
 
 		describe('inviteAcceptUrl', () => {
-			test('should include inviteAcceptUrl for pending users', async () => {
-				// Create a pending user
-				const pendingUser = await createUser({
-					role: 'global:member',
+			let pendingUser: User;
+			beforeAll(async () => {
+				pendingUser = await createUser({
+					role: { slug: 'global:member' },
 					email: 'pending@n8n.io',
 					firstName: 'PendingFirstName',
 					lastName: 'PendingLastName',
+					password: null,
 				});
+			});
 
-				await userRepository.update(
-					{ id: pendingUser.id },
-					{
-						password: null as unknown as string,
-					},
+			afterAll(async () => {
+				await userRepository.delete({ id: pendingUser.id });
+			});
+
+			test('should include inviteAcceptUrl for pending users', async () => {
+				const response = await ownerAgent.get('/users').expect(200);
+
+				const responseData = response.body.data as {
+					count: number;
+					items: PublicUser[];
+				};
+
+				const pendingUserInResponse = responseData.items.find((user) => user.id === pendingUser.id);
+
+				expect(pendingUserInResponse).toBeDefined();
+				expect(pendingUserInResponse!.inviteAcceptUrl).toBeDefined();
+				expect(pendingUserInResponse!.inviteAcceptUrl).toMatch(
+					new RegExp(`/signup\\?inviterId=${owner.id}&inviteeId=${pendingUser.id}`),
 				);
 
-				try {
-					const response = await ownerAgent.get('/users').expect(200);
+				const nonPendingUser = responseData.items.find((user) => user.id === member1.id);
 
-					expect(response.body.data).toHaveProperty('count');
-					expect(response.body.data).toHaveProperty('items');
+				expect(nonPendingUser).toBeDefined();
+				expect(nonPendingUser!.isPending).toBe(false);
+				expect(nonPendingUser!.inviteAcceptUrl).toBeUndefined();
+			});
 
-					// Find the pending user in the response
-					const pendingUserInResponse = response.body.data.items.find(
-						(user: any) => user.id === pendingUser.id,
-					);
+			test('should not include inviteAcceptUrl for pending users, if member requests it', async () => {
+				const response = await memberAgent.get('/users').expect(200);
 
-					expect(pendingUserInResponse).toBeDefined();
-					expect(pendingUserInResponse.inviteAcceptUrl).toBeDefined();
-					expect(pendingUserInResponse.inviteAcceptUrl).toMatch(
-						new RegExp(`/signup\\?inviterId=${owner.id}&inviteeId=${pendingUser.id}`),
-					);
+				const responseData = response.body.data as {
+					count: number;
+					items: PublicUser[];
+				};
 
-					// Verify that non-pending users don't have inviteAcceptUrl
-					const nonPendingUser = response.body.data.items.find(
-						(user: any) => user.id === member1.id,
-					);
+				const pendingUserInResponse = responseData.items.find((user) => user.id === pendingUser.id);
 
-					expect(nonPendingUser).toBeDefined();
-					expect(nonPendingUser.isPending).toBe(false);
-					expect(nonPendingUser.inviteAcceptUrl).toBeUndefined();
-				} finally {
-					// Clean up
-					await userRepository.delete({ id: pendingUser.id });
-				}
+				expect(pendingUserInResponse).toBeDefined();
+				expect(pendingUserInResponse!.inviteAcceptUrl).not.toBeDefined();
+
+				const nonPendingUser = responseData.items.find((user) => user.id === member1.id);
+
+				expect(nonPendingUser).toBeDefined();
+				expect(nonPendingUser!.isPending).toBe(false);
+				expect(nonPendingUser!.inviteAcceptUrl).toBeUndefined();
 			});
 		});
 
@@ -702,14 +726,14 @@ describe('GET /users', () => {
 
 			test('should sort by firstName and lastName combined', async () => {
 				const user1 = await createUser({
-					role: 'global:member',
+					role: { slug: 'global:member' },
 					email: 'memberz1@n8n.io',
 					firstName: 'ZZZFirstName',
 					lastName: 'ZZZLastName',
 				});
 
 				const user2 = await createUser({
-					role: 'global:member',
+					role: { slug: 'global:member' },
 					email: 'memberz2@n8n.io',
 					firstName: 'ZZZFirstName',
 					lastName: 'ZZYLastName',
@@ -1068,7 +1092,7 @@ describe('DELETE /users/:id', () => {
 					id: teamProject.id,
 					projectRelations: {
 						userId: transferee.id,
-						role: 'project:editor',
+						role: { slug: 'project:editor' },
 					},
 				}),
 			).resolves.not.toBeNull(),
@@ -1402,7 +1426,7 @@ describe('PATCH /users/:id/role', () => {
 
 			const user = await getUserById(otherAdmin.id);
 
-			expect(user.role).toBe('global:member');
+			expect(user.role.slug).toBe('global:member');
 
 			// restore other admin
 
@@ -1420,7 +1444,7 @@ describe('PATCH /users/:id/role', () => {
 
 			const user = await getUserById(admin.id);
 
-			expect(user.role).toBe('global:member');
+			expect(user.role.slug).toBe('global:member');
 
 			// restore admin
 
@@ -1436,9 +1460,9 @@ describe('PATCH /users/:id/role', () => {
 			expect(response.statusCode).toBe(200);
 			expect(response.body.data).toStrictEqual({ success: true });
 
-			const user = await getUserById(admin.id);
+			const user = await getUserById(member.id);
 
-			expect(user.role).toBe('global:admin');
+			expect(user.role.slug).toBe('global:admin');
 
 			// restore member
 
@@ -1487,7 +1511,7 @@ describe('PATCH /users/:id/role', () => {
 
 			const user = await getUserById(admin.id);
 
-			expect(user.role).toBe('global:admin');
+			expect(user.role.slug).toBe('global:admin');
 
 			// restore member
 
@@ -1505,7 +1529,7 @@ describe('PATCH /users/:id/role', () => {
 
 			const user = await getUserById(admin.id);
 
-			expect(user.role).toBe('global:member');
+			expect(user.role.slug).toBe('global:member');
 
 			// restore admin
 
